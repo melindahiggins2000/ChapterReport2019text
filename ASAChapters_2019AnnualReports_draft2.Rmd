@@ -1,0 +1,187 @@
+---
+title: "Chapter Annual Reports for 2019 - Data and Text Summary"
+author: "Melinda Higgins, PhD; Vice-Chair District 5"
+date: "8/1/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+# set up knitr options
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(error = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+# read in data
+library(readxl)
+data2019 <-
+  read_excel("ChapterAnnualReport-2019.xlsx")
+
+```
+
+## 2019 Annual Chapter Reports from 2019
+
+The Excel file containing all of the 2019 Annual ASA Chapter Reports was downloaded from the ASA Leader Hub - under Annual Chapter Reports. Go to [https://ww2.amstat.org/MembersOnly/chapterreportsnew/adminreportstatus_districts.cfm](https://ww2.amstat.org/MembersOnly/chapterreportsnew/adminreportstatus_districts.cfm) logged in with an ASA leader/officer account.
+
+Summaries are provide for each part of the questionnaire by district and region.
+
+## Breakdown of Reports submitted by Region and District
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(janitor)
+
+data2019 %>%
+  tabyl(DISTRICT, REGION)
+
+data2019 %>% 
+  filter((DISTRICT == 4) & (REGION == 3)) %>%
+  select(1:4)
+
+data2019 %>%
+  ggplot(aes(DISTRICT)) +
+  geom_bar(aes(fill = as.factor(REGION)))
+  coord_flip()
+```
+
+## Other Chapter Activities
+
+look at single words as tokens
+
+```{r}
+# look at other activities text entries
+# extract reportid and chaptername with text cokumn
+other_words <- data2019 %>%
+  select(REPORTID, CHAPTERNAME, TXTOTHERACTIVITIES)
+
+library(tidytext)
+other_words_tidy <- other_words %>%
+  unnest_tokens(word, TXTOTHERACTIVITIES)
+
+# load stop_words
+data(stop_words)
+
+# add custom stop words for ASA chapters
+addwords <- data.frame(c("2019","chapter","statistics","asa"), 
+                       c("mkh","mkh","mkh","mkh"))
+names(addwords) <- names(stop_words)
+stop_words2 <- rbind(stop_words, addwords)
+
+# filter our NAs and
+# remove stop_words using anti_join()
+other_words_tidy_rmstop <- other_words_tidy %>%
+  filter(complete.cases(.)) %>%
+  anti_join(stop_words2)
+
+# get table summary of most used words
+other_words_tidy_rmstop %>%
+  count(word, sort = TRUE)
+
+# use ggplot sorted bar graph
+other_words_tidy_rmstop %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 2) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  ggtitle("Other Chapter Activities - Single Words")
+  
+# word cloud - not very interesting...
+library(wordcloud)
+other_words_tidy_rmstop %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+
+
+chptr_other_words_tidy <- data2019 %>%
+  select(REPORTID, DISTRICT, CHAPTERNAME, TXTOTHERACTIVITIES) %>%
+  unnest_tokens(word, TXTOTHERACTIVITIES) %>%
+  filter(complete.cases(.)) %>%
+  anti_join(stop_words2) %>%
+  count(DISTRICT, word, sort=TRUE) %>%
+  ungroup()
+
+chptr_other_words_total <- chptr_other_words_tidy %>%
+  group_by(DISTRICT) %>%
+  summarise(total = sum(n))
+
+chptr_other_words <- left_join(chptr_other_words_tidy,
+                               chptr_other_words_total)
+
+ggplot(chptr_other_words, aes(n/total, fill = DISTRICT)) +
+  geom_histogram(show.legend = FALSE) +
+  facet_wrap(~DISTRICT, ncol=2, scales = "free_y")
+
+chptr_other_words <- chptr_other_words %>%
+  bind_tf_idf(word, DISTRICT, n)
+
+chptr_other_words
+
+chptr_other_words %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(DISTRICT) %>% 
+  top_n(2) %>% 
+  ungroup() %>%
+  ggplot(aes(word, tf_idf, fill = DISTRICT)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~DISTRICT, ncol = 2, scales = "free") +
+  coord_flip() +
+  ggtitle("Highest tf-idf words by District")
+
+
+```
+
+try tokens = "ngrams" for n=2
+
+```{r}
+otheract_bigrams <- data2019 %>%
+  select(REPORTID, DISTRICT, CHAPTERNAME, TXTOTHERACTIVITIES) %>%
+  unnest_tokens(bigram, TXTOTHERACTIVITIES,
+                token = "ngrams", n = 2)
+
+library(tidyr)
+otheract_bigrams_separated <- otheract_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+otheract_bigrams_filtered <- otheract_bigrams_separated %>%
+  filter(!word1 %in% stop_words2$word) %>%
+  filter(!word2 %in% stop_words2$word) %>%
+  filter(complete.cases(.))
+
+# new bigram counts:
+otheract_bigrams_counts <- otheract_bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+otheract_bigrams_counts
+
+otheract_bigrams_united <- otheract_bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+otheract_bigrams_united
+
+library(igraph)
+
+# filter for only relatively common combinations
+bigram_graph <- otheract_bigrams_counts %>%
+  filter(n > 1) %>%
+  graph_from_data_frame()
+
+bigram_graph
+
+library(ggraph)
+set.seed(2017)
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  ggtitle("Common bigrams in Other Activities")
+```
+

@@ -1,0 +1,231 @@
+---
+title: "Chapter Annual Reports for 2019 - Summaries of Text Responses"
+author: "Melinda Higgins, PhD; Vice-Chair District 5"
+date: "8/3/2020"
+output:
+  powerpoint_presentation: default
+  beamer_presentation: default
+  ioslides_presentation: default
+  slidy_presentation: default
+---
+
+```{r setup, include=FALSE}
+# set up knitr options
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(error = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+# read in data
+library(readxl)
+data2019 <-
+  read_excel("ChapterAnnualReport-2019.xlsx")
+```
+
+## 2019 Annual Chapter Reports from 2019
+
+The Excel file containing all of the 2019 Annual ASA Chapter Reports was downloaded from the ASA Leader Hub - under Annual Chapter Reports. Go to [https://ww2.amstat.org/MembersOnly/chapterreportsnew/adminreportstatus_districts.cfm](https://ww2.amstat.org/MembersOnly/chapterreportsnew/adminreportstatus_districts.cfm) logged in with an ASA leader/officer account.
+
+```{r dataftns}
+# set up libraries
+library(dplyr)
+library(ggplot2)
+library(janitor)
+library(tidytext)
+library(wordcloud)
+library(tidyr)
+
+# set up processing of text fields
+# load stop_words
+data(stop_words)
+
+# add custom stop words for ASA chapters
+addwords <- data.frame(c("2019","chapter","statistics","asa"), 
+                       c("mkh","mkh","mkh","mkh"))
+names(addwords) <- names(stop_words)
+stop_words2 <- rbind(stop_words, addwords)
+
+# setup custom functions for text mining
+# of words (single word at a time)
+# and bigrams (2-words together)
+# these codes are based on examples
+# in Julia Silge's Text Mining With R book
+
+# make function for single words
+# input data subset with
+# only ID and district and textvar are used
+wordscount <- function(df, textvar){
+  tidywords <- tidytext::unnest_tokens(df, word, {{textvar}})
+  countout <- tidywords %>% 
+    filter(complete.cases(.)) %>%
+    anti_join(stop_words2) %>%
+    count(word, sort = TRUE)
+  countout
+}
+
+# ct is needed if you want to look at
+# higher or lower counts of the most common words used
+# the default is set to > 2
+wordsplot <- function(df, textvar, ct = 2){
+  tidywords <- tidytext::unnest_tokens(df, word, {{textvar}})
+  tidywords %>% 
+    filter(complete.cases(.)) %>%
+    anti_join(stop_words2) %>%
+    count(word, sort = TRUE) %>%
+    filter(n > ct) %>%
+    mutate(word = reorder(word, n)) %>%
+    ggplot(aes(word, n)) +
+    geom_col() +
+    xlab(NULL) +
+    coord_flip()
+}
+
+wordscloud <- function(df, textvar){
+  tidywords <- tidytext::unnest_tokens(df, word, {{textvar}})
+  tidywords %>% 
+    filter(complete.cases(.)) %>%
+    anti_join(stop_words2) %>%
+    count(word) %>%
+    with(wordcloud(word, n, max.words = 100))
+}
+
+# add bigrams functions
+bigramcount <- function(df, textvar){
+  tidybigram <- 
+    tidytext::unnest_tokens(df, bigram, {{textvar}}, 
+                            token = "ngrams", n = 2)
+  countout <- tidybigram %>%
+    separate(bigram, c("word1", "word2"), sep = " ") %>%
+    filter(!word1 %in% stop_words2$word) %>%
+    filter(!word2 %in% stop_words2$word) %>%
+    filter(complete.cases(.)) %>%
+    count(word1, word2, sort = TRUE) %>%
+    unite(bigram, word1, word2, sep = " ")
+  countout
+}
+```
+
+## "Other Chapter Activities" - Most Used Single Words (> 2x)
+
+```{r}
+# create df variable subset
+df <- data2019 %>%
+  select(REPORTID, DISTRICT, CHAPTERNAME, TXTOTHERACTIVITIES)
+
+txtcount <- wordscount(df, "TXTOTHERACTIVITIES")
+
+#knitr::kable(txtcount %>% filter(n>2),
+#             caption = "Other Chapter Activities - Single Words Summary")
+
+wordsplot(df, "TXTOTHERACTIVITIES", 2) 
+```
+
+## "Other Chapter Activities" - Single Words Wordcloud
+
+```{r}
+wordscloud(df, "TXTOTHERACTIVITIES")
+```
+
+## "Other Chapter Activities" - Bigrams (top 2-words)
+
+```{r}
+bicount <- bigramcount(df, "TXTOTHERACTIVITIES")
+
+knitr::kable(bicount %>% filter(n>1),
+             caption = "Other Chapter Activities - Bigram (2 word) Summary")
+```
+
+## Other Chapter Activity Details - Most Used Single Words (> 5x)
+
+```{r}
+# create df variable subset
+df <- data2019 %>%
+  select(REPORTID, DISTRICT, CHAPTERNAME, TXTOTHERDETAILS)
+
+txtcount <- wordscount(df, "TXTOTHERDETAILS")
+
+#knitr::kable(txtcount %>% filter(n>8),
+#             caption = "Other Chapter ActivitY Details - Single Words Summary")
+
+wordsplot(df, "TXTOTHERDETAILS", 5) +
+  ggtitle("Other Chapter Activity Details - Most Used Single Words (mentioned more than 5x)")
+```
+
+## "Other Chapter Activity Details" - Single Words Wordcloud
+
+```{r}
+wordscloud(df, "TXTOTHERDETAILS")
+```
+
+## "Other Chapter Activity Details" - Bigrams (top 2-words)
+
+```{r}
+bicount <- bigramcount(df, "TXTOTHERDETAILS")
+
+knitr::kable(bicount %>% filter(n>2),
+             caption = "Other Chapter Activity Details - Bigram (2 word) Summary")
+```
+
+## "Use of Stimulus Funds" - Most Used Single Words (> 2x)
+
+```{r}
+# create df variable subset
+df <- data2019 %>%
+  select(REPORTID, DISTRICT, CHAPTERNAME, TXTSTIMULUSFUNDS)
+
+txtcount <- wordscount(df, "TXTSTIMULUSFUNDS")
+
+#knitr::kable(txtcount %>% filter(n>2),
+#             caption = "Use of Stimulus Funds - Single Words Summary")
+
+wordsplot(df, "TXTSTIMULUSFUNDS", 2) +
+  ggtitle("Use of Stimulus Funds - Most Used Single Words (mentioned more than 2x)")
+```
+
+## "Use of Stimulus Funds" - Single Words Wordcloud
+
+```{r}
+wordscloud(df, "TXTSTIMULUSFUNDS")
+```
+
+## "Use of Stimulus Funds" - Bigrams (top 2-words)
+
+```{r}
+bicount <- bigramcount(df, "TXTSTIMULUSFUNDS")
+
+knitr::kable(bicount %>% filter(n>1),
+             caption = "Use of Stimulus Funds - Bigram (2 word) Summary")
+```
+
+## "How can ASA help your chapter?" - Most Used Single Words (> 2x)
+
+```{r}
+# create df variable subset
+df <- data2019 %>%
+  select(REPORTID, DISTRICT, CHAPTERNAME, TXTCHAPTERHELP)
+
+txtcount <- wordscount(df, "TXTCHAPTERHELP")
+
+#knitr::kable(txtcount %>% filter(n>2),
+#             caption = "How can ASA help your chapter? - Single Words Summary")
+
+wordsplot(df, "TXTCHAPTERHELP", 2) +
+  ggtitle("How can ASA help your chapter? - Most Used Single Words (mentioned more than 2x)")
+```
+
+## "How can ASA help your chapter?" - Single Words Wordcloud
+
+```{r}
+wordscloud(df, "TXTCHAPTERHELP")
+```
+
+## "How can ASA help your chapter?" - Bigrams (top 2-words)
+
+```{r}
+bicount <- bigramcount(df, "TXTCHAPTERHELP")
+
+knitr::kable(bicount %>% filter(n>1),
+             caption = "How can ASA help your chapter? - Bigram (2 word) Summary")
+```
+
+
